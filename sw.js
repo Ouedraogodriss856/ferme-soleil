@@ -1,36 +1,21 @@
-/* Service worker : le carnet marche sans connexion. Changez VERSION à chaque mise à jour du site. */
-var VERSION = 'cb-v3';
-var FILES = ['./', './index.html', './manifest.json'];
-var OPTIONAL = ['./icon-192.png', './icon-512.png'];
+// Service worker : permet de jouer hors-ligne (le jeu est mis en cache).
+const CACHE = 'ferme-soleil-v3';
+const FILES = ['./', './index.html', './manifest.json', './icon.svg', './privacy.html'];
 
-self.addEventListener('install', function (e) {
-  e.waitUntil(
-    caches.open(VERSION).then(function (c) {
-      return c.addAll(FILES).then(function () {
-        return Promise.all(OPTIONAL.map(function (u) { return c.add(u).catch(function () {}); }));
-      });
-    }).then(function () { return self.skipWaiting(); })
-  );
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
 });
-
-self.addEventListener('activate', function (e) {
-  e.waitUntil(
-    caches.keys().then(function (keys) {
-      return Promise.all(keys.filter(function (k) { return k !== VERSION; }).map(function (k) { return caches.delete(k); }));
-    }).then(function () { return self.clients.claim(); })
-  );
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
-
-self.addEventListener('fetch', function (e) {
-  var req = e.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
+  if (e.request.method !== 'GET' || url.origin !== location.origin) return; // ne pas toucher aux pubs Google
   e.respondWith(
-    caches.match(req, { ignoreSearch: true }).then(function (hit) {
-      var net = fetch(req).then(function (res) {
-        if (res && res.ok) { var copy = res.clone(); caches.open(VERSION).then(function (c) { c.put(req, copy); }); }
-        return res;
-      }).catch(function () { return hit || caches.match('./index.html'); });
-      return hit || net;
-    })
+    fetch(e.request).then(r => {
+      const copy = r.clone();
+      caches.open(CACHE).then(c => c.put(e.request, copy));
+      return r;
+    }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
   );
 });
